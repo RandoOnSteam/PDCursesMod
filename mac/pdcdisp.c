@@ -1,1 +1,380 @@
-#include "pdcmac.h"#include <string.h>#ifdef PDC_WIDE#define USE_UNICODE_ACS_CHARS 1#else#define USE_UNICODE_ACS_CHARS 0#endif#include <acs_defs.h>#include <pdccolor.h>#include <blink.c>#ifndef PACK_RGB#define PACK_RGB(red, green, blue) ((PACKED_RGB)(red) | ((PACKED_RGB)(green) << 8) | ((PACKED_RGB)(blue) << 16))#endifstatic void packed_to_rgb(PACKED_RGB packed, RGBColor *color){    unsigned int red;    unsigned int green;    unsigned int blue;    red = Get_RValue(packed);    green = Get_GValue(packed);    blue = Get_BValue(packed);    color->red = (unsigned short)((red << 8) | red);    color->green = (unsigned short)((green << 8) | green);    color->blue = (unsigned short)((blue << 8) | blue);}static void fill_rect(Rect *cell, const RGBColor *color){    RGBForeColor(color);    PaintRect(cell);}static int is_hline(unsigned long ch){    if (ch == 0x2500 || ch == 0x2501 || ch == 0x2550)        return 1;    if (ch == 0xC4 || ch == 0xCD)        return 1;    return 0;}static int is_vline(unsigned long ch){    if (ch == 0x2502 || ch == 0x2503 || ch == 0x2551)        return 1;    if (ch == 0xB3 || ch == 0xBA)        return 1;    return 0;}static int box_mask(unsigned long ch){    int mask;    mask = 0;    if (ch == 0x250C || ch == 0x250F || ch == 0x2554 || ch == 0xDA || ch == 0xC9)        mask = 2 | 8;    else if (ch == 0x2510 || ch == 0x2513 || ch == 0x2557 || ch == 0xBF || ch == 0xBB)        mask = 2 | 4;    else if (ch == 0x2514 || ch == 0x2517 || ch == 0x255A || ch == 0xC0 || ch == 0xC8)        mask = 1 | 8;    else if (ch == 0x2518 || ch == 0x251B || ch == 0x255D || ch == 0xD9 || ch == 0xBC)        mask = 1 | 4;    else if (ch == 0x251C || ch == 0x2523 || ch == 0x2560 || ch == 0xC3 || ch == 0xCC)        mask = 1 | 2 | 8;    else if (ch == 0x2524 || ch == 0x252B || ch == 0x2563 || ch == 0xB4 || ch == 0xB9)        mask = 1 | 2 | 4;    else if (ch == 0x252C || ch == 0x2533 || ch == 0x2566 || ch == 0xC2 || ch == 0xCB)        mask = 2 | 4 | 8;    else if (ch == 0x2534 || ch == 0x253B || ch == 0x2569 || ch == 0xC1 || ch == 0xCA)        mask = 1 | 4 | 8;    else if (ch == 0x253C || ch == 0x254B || ch == 0x256C || ch == 0xC5 || ch == 0xCE)        mask = 1 | 2 | 4 | 8;    return mask;}static int draw_graphic(unsigned long ch, Rect *cell, const RGBColor *fg){    int midx;    int midy;    int mask;    midx = (cell->left + cell->right) / 2;    midy = (cell->top + cell->bottom) / 2;    RGBForeColor(fg);    PenNormal();    PenSize(1, 1);    if (ch == 0x2588 || ch == 0xDB)    {        PaintRect(cell);        return 1;    }    if (ch == 0x2580 || ch == 0xDF)    {        Rect half;        half = *cell;        half.bottom = midy;        PaintRect(&half);        return 1;    }    if (ch == 0x2584 || ch == 0xDC)    {        Rect half;        half = *cell;        half.top = midy;        PaintRect(&half);        return 1;    }    if (ch == 0x258C || ch == 0xDD)    {        Rect half;        half = *cell;        half.right = midx;        PaintRect(&half);        return 1;    }    if (ch == 0x2590 || ch == 0xDE)    {        Rect half;        half = *cell;        half.left = midx;        PaintRect(&half);        return 1;    }    if (ch == 0x2591 || ch == 0xB0 || ch == 0x2592 || ch == 0xB1        || ch == 0x2593 || ch == 0xB2)    {#if TARGET_API_MAC_CARBON        Pattern pat;        if (ch == 0x2591 || ch == 0xB0)            GetQDGlobalsLightGray(&pat);        else if (ch == 0x2593 || ch == 0xB2)            GetQDGlobalsDarkGray(&pat);        else            GetQDGlobalsGray(&pat);        PenPat(&pat);#else        if (ch == 0x2591 || ch == 0xB0)            PenPat(&qd.ltGray);        else if (ch == 0x2593 || ch == 0xB2)            PenPat(&qd.dkGray);        else            PenPat(&qd.gray);#endif        PaintRect(cell);        PenNormal();        return 1;    }    if (is_hline(ch))    {        MoveTo(cell->left, midy);        LineTo(cell->right - 1, midy);        return 1;    }    if (is_vline(ch))    {        MoveTo(midx, cell->top);        LineTo(midx, cell->bottom - 1);        return 1;    }    mask = box_mask(ch);    if (mask)    {        if (mask & 1)        {            MoveTo(midx, cell->top);            LineTo(midx, midy);        }        if (mask & 2)        {            MoveTo(midx, midy);            LineTo(midx, cell->bottom - 1);        }        if (mask & 4)        {            MoveTo(cell->left, midy);            LineTo(midx, midy);        }        if (mask & 8)        {            MoveTo(midx, midy);            LineTo(cell->right - 1, midy);        }        return 1;    }    if (ch == 0x25C6 || ch == 0x2666 || ch == 0x04)    {        MoveTo(midx, cell->top + 1);        LineTo(cell->right - 2, midy);        LineTo(midx, cell->bottom - 2);        LineTo(cell->left + 1, midy);        LineTo(midx, cell->top + 1);        return 1;    }    return 0;}static void draw_cursor_shape(Rect *cell, const RGBColor *fg){    int style;    Rect bar;    style = SP->drawing_cursor;    RGBForeColor(fg);    bar = *cell;    if (style == 2)    {        InvertRect(&bar);        return;    }    if (style == 1)    {        bar.top = bar.bottom - PDC_font_height / 5;        if (bar.top < cell->top)            bar.top = cell->top;        PaintRect(&bar);    }    else if (style == 5)    {        bar.top = (cell->top + cell->bottom) / 2;        PaintRect(&bar);    }    else if (style == 3)    {        FrameRect(&bar);    }    else if (style == 4)    {        MoveTo(cell->left + 1, cell->top);        LineTo(cell->left + 1, cell->bottom - 1);    }}static unsigned char char_to_mac(unsigned long ch){    if (ch < 0x100)        return (unsigned char)ch;    return PDC_unicode_to_macroman(ch);}void PDC_transform_line(int lineno, int x, int len, const chtype *srcp){    int i;    Rect clipbounds;    PDC_LOG(("PDC_transform_line() - called: lineno=%d\n", lineno));    if (!srcp || len <= 0 || !PDC_window)        return;    PDC_mac_set_port();    PDC_mac_port_bounds(&clipbounds);    TextFont(monaco);    TextSize(PDC_font_size);    for (i = 0; i < len; i++)    {        chtype cell;        unsigned long ch;        PACKED_RGB fgpacked;        PACKED_RGB bgpacked;        RGBColor fg;        RGBColor bg;        Rect r;        Style face;        attr_t sysattrs;        cell = srcp[i];        sysattrs = SP->termattrs;        if (_is_altcharset(cell))            ch = (unsigned long)acs_map[cell & 0x7f];        else            ch = (unsigned long)(cell & A_CHARTEXT);        if ((cell & A_BLINK) && SP->blink_state && (sysattrs & A_BLINK))            ch = (unsigned long)' ';        PDC_get_rgb_values(cell, &fgpacked, &bgpacked);        if (fgpacked == (PACKED_RGB)-1)            fgpacked = PACK_RGB(0xC0, 0xC0, 0xC0);        if (bgpacked == (PACKED_RGB)-1)            bgpacked = PACK_RGB(0, 0, 0);        packed_to_rgb(fgpacked, &fg);        packed_to_rgb(bgpacked, &bg);        PDC_mac_cell_rect(lineno, x + i, &r);        ClipRect(&r);        fill_rect(&r, &bg);        RGBForeColor(&fg);        RGBBackColor(&bg);        face = 0;        if ((cell & A_BOLD) && (sysattrs & A_BOLD))            face |= bold;        if ((cell & A_ITALIC) && (sysattrs & A_ITALIC))            face |= italic;        TextFace(face);        if (!draw_graphic(ch, &r, &fg))        {            unsigned char drawn;            drawn = char_to_mac(ch);            if (drawn < 32)                drawn = (unsigned char)' ';            MoveTo(r.left, r.top + PDC_font_ascent);            DrawChar(drawn);        }        if (cell & (A_UNDERLINE | A_TOP | A_LEFT | A_RIGHT | A_STRIKEOUT))        {            RGBColor linec;            int lineidx;            lineidx = SP->line_color;            if (lineidx != -1)                packed_to_rgb(PDC_get_palette_entry(lineidx), &linec);            else                linec = fg;            RGBForeColor(&linec);            PenNormal();            if (cell & A_UNDERLINE)            {                MoveTo(r.left, r.bottom - 1);                LineTo(r.right - 1, r.bottom - 1);            }            if (cell & A_TOP)            {                MoveTo(r.left, r.top);                LineTo(r.right - 1, r.top);            }            if (cell & A_STRIKEOUT)            {                int midy;                midy = (r.top + r.bottom) / 2;                MoveTo(r.left, midy);                LineTo(r.right - 1, midy);            }            if (cell & A_LEFT)            {                MoveTo(r.left, r.top);                LineTo(r.left, r.bottom - 1);            }            if (cell & A_RIGHT)            {                MoveTo(r.right - 1, r.top);                LineTo(r.right - 1, r.bottom - 1);            }        }        if (SP->drawing_cursor)            draw_cursor_shape(&r, &fg);        ClipRect(&clipbounds);    }    TextFace(0);#ifdef MAC_OS_X_VERSION_10_0    {        CGrafPtr port;        port = GetWindowPort(PDC_window);        if (port)            QDFlushPortBuffer(port, NULL);    }#endif}void PDC_doupdate(void){#ifdef MAC_OS_X_VERSION_10_0    if (PDC_window)    {        CGrafPtr port;        port = GetWindowPort(PDC_window);        if (port)            QDFlushPortBuffer(port, NULL);    }#endif}
+#include "pdcmac.h"
+#include <string.h>
+
+#ifdef PDC_WIDE
+#define USE_UNICODE_ACS_CHARS 1
+#else
+#define USE_UNICODE_ACS_CHARS 0
+#endif
+
+#include <acs_defs.h>
+#include <pdccolor.h>
+#include <blink.c>
+
+#ifndef PACK_RGB
+#define PACK_RGB(red, green, blue) ((PACKED_RGB)(red) | ((PACKED_RGB)(green) << 8) | ((PACKED_RGB)(blue) << 16))
+#endif
+
+static void packed_to_rgb(PACKED_RGB packed, RGBColor *color)
+{
+    unsigned int red;
+    unsigned int green;
+    unsigned int blue;
+
+    red = Get_RValue(packed);
+    green = Get_GValue(packed);
+    blue = Get_BValue(packed);
+    color->red = (unsigned short)((red << 8) | red);
+    color->green = (unsigned short)((green << 8) | green);
+    color->blue = (unsigned short)((blue << 8) | blue);
+}
+
+static void fill_rect(Rect *cell, const RGBColor *color)
+{
+    RGBForeColor(color);
+    PaintRect(cell);
+}
+
+static int is_hline(unsigned long ch)
+{
+    if (ch == 0x2500 || ch == 0x2501 || ch == 0x2550)
+        return 1;
+    if (ch == 0xC4 || ch == 0xCD)
+        return 1;
+    return 0;
+}
+
+static int is_vline(unsigned long ch)
+{
+    if (ch == 0x2502 || ch == 0x2503 || ch == 0x2551)
+        return 1;
+    if (ch == 0xB3 || ch == 0xBA)
+        return 1;
+    return 0;
+}
+
+static int box_mask(unsigned long ch)
+{
+    int mask;
+
+    mask = 0;
+    if (ch == 0x250C || ch == 0x250F || ch == 0x2554 || ch == 0xDA || ch == 0xC9)
+        mask = 2 | 8;
+    else if (ch == 0x2510 || ch == 0x2513 || ch == 0x2557 || ch == 0xBF || ch == 0xBB)
+        mask = 2 | 4;
+    else if (ch == 0x2514 || ch == 0x2517 || ch == 0x255A || ch == 0xC0 || ch == 0xC8)
+        mask = 1 | 8;
+    else if (ch == 0x2518 || ch == 0x251B || ch == 0x255D || ch == 0xD9 || ch == 0xBC)
+        mask = 1 | 4;
+    else if (ch == 0x251C || ch == 0x2523 || ch == 0x2560 || ch == 0xC3 || ch == 0xCC)
+        mask = 1 | 2 | 8;
+    else if (ch == 0x2524 || ch == 0x252B || ch == 0x2563 || ch == 0xB4 || ch == 0xB9)
+        mask = 1 | 2 | 4;
+    else if (ch == 0x252C || ch == 0x2533 || ch == 0x2566 || ch == 0xC2 || ch == 0xCB)
+        mask = 2 | 4 | 8;
+    else if (ch == 0x2534 || ch == 0x253B || ch == 0x2569 || ch == 0xC1 || ch == 0xCA)
+        mask = 1 | 4 | 8;
+    else if (ch == 0x253C || ch == 0x254B || ch == 0x256C || ch == 0xC5 || ch == 0xCE)
+        mask = 1 | 2 | 4 | 8;
+    return mask;
+}
+
+static int draw_graphic(unsigned long ch, Rect *cell, const RGBColor *fg)
+{
+    int midx;
+    int midy;
+    int mask;
+
+    midx = (cell->left + cell->right) / 2;
+    midy = (cell->top + cell->bottom) / 2;
+    RGBForeColor(fg);
+    PenNormal();
+    PenSize(1, 1);
+    if (ch == 0x2588 || ch == 0xDB)
+    {
+        PaintRect(cell);
+        return 1;
+    }
+    if (ch == 0x2580 || ch == 0xDF)
+    {
+        Rect half;
+
+        half = *cell;
+        half.bottom = midy;
+        PaintRect(&half);
+        return 1;
+    }
+    if (ch == 0x2584 || ch == 0xDC)
+    {
+        Rect half;
+
+        half = *cell;
+        half.top = midy;
+        PaintRect(&half);
+        return 1;
+    }
+    if (ch == 0x258C || ch == 0xDD)
+    {
+        Rect half;
+
+        half = *cell;
+        half.right = midx;
+        PaintRect(&half);
+        return 1;
+    }
+    if (ch == 0x2590 || ch == 0xDE)
+    {
+        Rect half;
+
+        half = *cell;
+        half.left = midx;
+        PaintRect(&half);
+        return 1;
+    }
+    if (ch == 0x2591 || ch == 0xB0 || ch == 0x2592 || ch == 0xB1
+        || ch == 0x2593 || ch == 0xB2)
+    {
+#if TARGET_API_MAC_CARBON
+        Pattern pat;
+
+        if (ch == 0x2591 || ch == 0xB0)
+            GetQDGlobalsLightGray(&pat);
+        else if (ch == 0x2593 || ch == 0xB2)
+            GetQDGlobalsDarkGray(&pat);
+        else
+            GetQDGlobalsGray(&pat);
+        PenPat(&pat);
+#else
+        if (ch == 0x2591 || ch == 0xB0)
+            PenPat(&qd.ltGray);
+        else if (ch == 0x2593 || ch == 0xB2)
+            PenPat(&qd.dkGray);
+        else
+            PenPat(&qd.gray);
+#endif
+        PaintRect(cell);
+        PenNormal();
+        return 1;
+    }
+    if (is_hline(ch))
+    {
+        MoveTo(cell->left, midy);
+        LineTo(cell->right - 1, midy);
+        return 1;
+    }
+    if (is_vline(ch))
+    {
+        MoveTo(midx, cell->top);
+        LineTo(midx, cell->bottom - 1);
+        return 1;
+    }
+    mask = box_mask(ch);
+    if (mask)
+    {
+        if (mask & 1)
+        {
+            MoveTo(midx, cell->top);
+            LineTo(midx, midy);
+        }
+        if (mask & 2)
+        {
+            MoveTo(midx, midy);
+            LineTo(midx, cell->bottom - 1);
+        }
+        if (mask & 4)
+        {
+            MoveTo(cell->left, midy);
+            LineTo(midx, midy);
+        }
+        if (mask & 8)
+        {
+            MoveTo(midx, midy);
+            LineTo(cell->right - 1, midy);
+        }
+        return 1;
+    }
+    if (ch == 0x25C6 || ch == 0x2666 || ch == 0x04)
+    {
+        MoveTo(midx, cell->top + 1);
+        LineTo(cell->right - 2, midy);
+        LineTo(midx, cell->bottom - 2);
+        LineTo(cell->left + 1, midy);
+        LineTo(midx, cell->top + 1);
+        return 1;
+    }
+    return 0;
+}
+
+static void draw_cursor_shape(Rect *cell, const RGBColor *fg)
+{
+    int style;
+    Rect bar;
+
+    style = SP->drawing_cursor;
+    RGBForeColor(fg);
+    bar = *cell;
+    if (style == 2)
+    {
+        InvertRect(&bar);
+        return;
+    }
+    if (style == 1)
+    {
+        bar.top = bar.bottom - PDC_font_height / 5;
+        if (bar.top < cell->top)
+            bar.top = cell->top;
+        PaintRect(&bar);
+    }
+    else if (style == 5)
+    {
+        bar.top = (cell->top + cell->bottom) / 2;
+        PaintRect(&bar);
+    }
+    else if (style == 3)
+    {
+        FrameRect(&bar);
+    }
+    else if (style == 4)
+    {
+        MoveTo(cell->left + 1, cell->top);
+        LineTo(cell->left + 1, cell->bottom - 1);
+    }
+}
+
+static unsigned char char_to_mac(unsigned long ch)
+{
+    if (ch < 0x100)
+        return (unsigned char)ch;
+    return PDC_unicode_to_macroman(ch);
+}
+
+void PDC_transform_line(int lineno, int x, int len, const chtype *srcp)
+{
+    int i;
+    Rect clipbounds;
+
+    PDC_LOG(("PDC_transform_line() - called: lineno=%d\n", lineno));
+    if (!srcp || len <= 0 || !PDC_window)
+        return;
+    PDC_mac_set_port();
+    PDC_mac_port_bounds(&clipbounds);
+    TextFont(monaco);
+    TextSize(PDC_font_size);
+    for (i = 0; i < len; i++)
+    {
+        chtype cell;
+        unsigned long ch;
+        PACKED_RGB fgpacked;
+        PACKED_RGB bgpacked;
+        RGBColor fg;
+        RGBColor bg;
+        Rect r;
+        Style face;
+        attr_t sysattrs;
+
+        cell = srcp[i];
+        sysattrs = SP->termattrs;
+        if (_is_altcharset(cell))
+            ch = (unsigned long)acs_map[cell & 0x7f];
+        else
+            ch = (unsigned long)(cell & A_CHARTEXT);
+        if ((cell & A_BLINK) && SP->blink_state && (sysattrs & A_BLINK))
+            ch = (unsigned long)' ';
+        PDC_get_rgb_values(cell, &fgpacked, &bgpacked);
+        if (fgpacked == (PACKED_RGB)-1)
+            fgpacked = PACK_RGB(0xC0, 0xC0, 0xC0);
+        if (bgpacked == (PACKED_RGB)-1)
+            bgpacked = PACK_RGB(0, 0, 0);
+        packed_to_rgb(fgpacked, &fg);
+        packed_to_rgb(bgpacked, &bg);
+        PDC_mac_cell_rect(lineno, x + i, &r);
+        ClipRect(&r);
+        fill_rect(&r, &bg);
+        RGBForeColor(&fg);
+        RGBBackColor(&bg);
+        face = 0;
+        if ((cell & A_BOLD) && (sysattrs & A_BOLD))
+            face |= bold;
+        if ((cell & A_ITALIC) && (sysattrs & A_ITALIC))
+            face |= italic;
+        TextFace(face);
+        if (!draw_graphic(ch, &r, &fg))
+        {
+            unsigned char drawn;
+
+            drawn = char_to_mac(ch);
+            if (drawn < 32)
+                drawn = (unsigned char)' ';
+            MoveTo(r.left, r.top + PDC_font_ascent);
+            DrawChar(drawn);
+        }
+        if (cell & (A_UNDERLINE | A_TOP | A_LEFT | A_RIGHT | A_STRIKEOUT))
+        {
+            RGBColor linec;
+            int lineidx;
+
+            lineidx = SP->line_color;
+            if (lineidx != -1)
+                packed_to_rgb(PDC_get_palette_entry(lineidx), &linec);
+            else
+                linec = fg;
+            RGBForeColor(&linec);
+            PenNormal();
+            if (cell & A_UNDERLINE)
+            {
+                MoveTo(r.left, r.bottom - 1);
+                LineTo(r.right - 1, r.bottom - 1);
+            }
+            if (cell & A_TOP)
+            {
+                MoveTo(r.left, r.top);
+                LineTo(r.right - 1, r.top);
+            }
+            if (cell & A_STRIKEOUT)
+            {
+                int midy;
+
+                midy = (r.top + r.bottom) / 2;
+                MoveTo(r.left, midy);
+                LineTo(r.right - 1, midy);
+            }
+            if (cell & A_LEFT)
+            {
+                MoveTo(r.left, r.top);
+                LineTo(r.left, r.bottom - 1);
+            }
+            if (cell & A_RIGHT)
+            {
+                MoveTo(r.right - 1, r.top);
+                LineTo(r.right - 1, r.bottom - 1);
+            }
+        }
+        if (SP->drawing_cursor)
+            draw_cursor_shape(&r, &fg);
+        ClipRect(&clipbounds);
+    }
+    TextFace(0);
+#ifdef MAC_OS_X_VERSION_10_0
+    {
+        CGrafPtr port;
+
+        port = GetWindowPort(PDC_window);
+        if (port)
+            QDFlushPortBuffer(port, NULL);
+    }
+#endif
+}
+
+void PDC_doupdate(void)
+{
+#ifdef MAC_OS_X_VERSION_10_0
+    if (PDC_window)
+    {
+        CGrafPtr port;
+
+        port = GetWindowPort(PDC_window);
+        if (port)
+            QDFlushPortBuffer(port, NULL);
+    }
+#endif
+}
