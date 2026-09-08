@@ -482,6 +482,13 @@ long PDC_millisecs( void)
     return( t.tv_sec * 1000 + t.tv_usec / 1000);
 }
 
+#elif defined(macintosh)
+#include <OSUtils.h>
+long PDC_millisecs( void)
+{
+	return (((long)TickCount()) * 1000) / 60;
+}
+
 #else    /* neither gettimeofday() or clock_gettime() available */
 #include <sys/timeb.h>
 

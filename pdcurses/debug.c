@@ -56,7 +56,9 @@ debug
 
 #include <stdlib.h>
 #include <string.h>
-#include <sys/types.h>
+#if !defined(macintosh)
+	#include <sys/types.h>
+#endif
 #include <time.h>
 
 void PDC_debug(const char *fmt, ...)
