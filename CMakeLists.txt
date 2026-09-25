@@ -48,6 +48,10 @@ elseif(PDC_OS2_BUILD) # currently requires a unique toolchain file
 
     add_subdirectory(os2)
 
+elseif(CMAKE_SYSTEM_NAME MATCHES "^Retro")
+
+    add_subdirectory(mac)
+
 else()
 
     add_subdirectory(ncurses)

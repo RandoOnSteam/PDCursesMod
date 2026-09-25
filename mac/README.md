@@ -21,9 +21,9 @@ Building
         pdcursescw6win.mcp - Windows CodeWarrior 6 Pro project file
         
 - The CodeWarrior project files include only the library itself. 
-  If you want compile a demo, test, or your own application either
-  add it as a target to the project or make your own project file
-  and add PDCursesMod as a library.
+  If you want compile a demo, test, or your own application, 
+  either add it as a target to the project or make your own 
+  project file and add PDCursesMod as a library.
 
 - If making an application include pdcurses.r or your own resource file.
 

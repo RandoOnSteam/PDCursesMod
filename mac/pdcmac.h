@@ -1,12 +1,8 @@
 #ifndef PDC_MAC_H
 #define PDC_MAC_H 1
 
-#ifndef TARGET_API_MAC_CARBON
-# ifdef TARGET_CARBON
-#  define TARGET_API_MAC_CARBON TARGET_CARBON
-# else
-#  define TARGET_API_MAC_CARBON 0
-# endif
+#if !defined(TARGET_API_MAC_CARBON) && defined(TARGET_CARBON)
+# define TARGET_API_MAC_CARBON TARGET_CARBON
 #endif
 
 #include <Quickdraw.h>
@@ -33,6 +29,8 @@
 #ifndef kScrapFlavorTypeText
 #define kScrapFlavorTypeText 'TEXT'
 #endif
+
+#define PDC_MAC_GROW_MARGIN 15
 
 #ifndef zoomDocProc
 #define zoomDocProc 8
@@ -137,6 +135,7 @@ void PDC_mac_goaway(EventRecord *event);
 void PDC_mac_redraw(void);
 void PDC_mac_handle_menu(long menuresult);
 void PDC_mac_adjust_size(int pixelwidth, int pixelheight, int queue_resize);
+void PDC_mac_adjust_cells(int cols, int rows, int queue_resize);
 unsigned short PDC_macroman_to_unicode(unsigned char ch);
 unsigned char PDC_unicode_to_macroman(unsigned long code);
 

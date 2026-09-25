@@ -146,8 +146,8 @@ void PDC_mac_adjust_size(int pixelwidth, int pixelheight, int queue_resize)
     int cols;
     Rect limits;
 
-    cols = pixelwidth / PDC_font_width;
-    rows = pixelheight / PDC_font_height;
+    cols = (pixelwidth - PDC_MAC_GROW_MARGIN) / PDC_font_width;
+    rows = (pixelheight - PDC_MAC_GROW_MARGIN) / PDC_font_height;
     if (cols < PDC_min_cols)
         cols = PDC_min_cols;
     if (rows < PDC_min_lines)
@@ -160,8 +160,8 @@ void PDC_mac_adjust_size(int pixelwidth, int pixelheight, int queue_resize)
         cols = 2;
     if (rows < 2)
         rows = 2;
-    SizeWindow(PDC_window, (short)(cols * PDC_font_width),
-               (short)(rows * PDC_font_height), TRUE);
+    SizeWindow(PDC_window, (short)(cols * PDC_font_width + PDC_MAC_GROW_MARGIN),
+               (short)(rows * PDC_font_height + PDC_MAC_GROW_MARGIN), TRUE);
     if (PDC_cols != cols || PDC_rows != rows)
     {
         PDC_cols = cols;
@@ -173,6 +173,12 @@ void PDC_mac_adjust_size(int pixelwidth, int pixelheight, int queue_resize)
     PDC_mac_invalidate(&limits);
     PDC_mac_set_port();
     DrawGrowIcon(PDC_window);
+}
+
+void PDC_mac_adjust_cells(int cols, int rows, int queue_resize)
+{
+    PDC_mac_adjust_size(cols * PDC_font_width + PDC_MAC_GROW_MARGIN,
+                        rows * PDC_font_height + PDC_MAC_GROW_MARGIN, queue_resize);
 }
 
 void PDC_mac_drag(EventRecord *event)
@@ -189,10 +195,10 @@ void PDC_mac_grow(EventRecord *event)
     long grow;
 
     SetRect(&limits,
-            (short)(PDC_min_cols * PDC_font_width),
-            (short)(PDC_min_lines * PDC_font_height),
-            (short)(PDC_max_cols * PDC_font_width),
-            (short)(PDC_max_lines * PDC_font_height));
+            (short)(PDC_min_cols * PDC_font_width + PDC_MAC_GROW_MARGIN),
+            (short)(PDC_min_lines * PDC_font_height + PDC_MAC_GROW_MARGIN),
+            (short)(PDC_max_cols * PDC_font_width + PDC_MAC_GROW_MARGIN),
+            (short)(PDC_max_lines * PDC_font_height + PDC_MAC_GROW_MARGIN));
     grow = GrowWindow(PDC_window, event->where, &limits);
     if (grow)
         PDC_mac_adjust_size(LoWord(grow), HiWord(grow), 1);
@@ -389,8 +395,8 @@ static WindowPtr create_window(void)
     WindowPtr window;
 
     screen_work_rect(&screen);
-    width = PDC_cols * PDC_font_width;
-    height = PDC_rows * PDC_font_height;
+    width = PDC_cols * PDC_font_width + PDC_MAC_GROW_MARGIN;
+    height = PDC_rows * PDC_font_height + PDC_MAC_GROW_MARGIN;
     if (width > screen.right - screen.left - 8)
         width = screen.right - screen.left - 8;
     if (height > screen.bottom - screen.top - 8)
@@ -471,7 +477,7 @@ int PDC_scr_open(void)
         SelectWindow(PDC_window);
         PDC_mac_set_port();
         PDC_mac_apply_font();
-        PDC_mac_adjust_size(PDC_cols * PDC_font_width, PDC_rows * PDC_font_height, 0);
+        PDC_mac_adjust_cells(PDC_cols, PDC_rows, 0);
         PDC_mac_reset_mouse_rgn();
     }
     SP->mouse_wait = PDC_CLICK_PERIOD;
@@ -504,7 +510,7 @@ int PDC_resize_screen(int nlines, int ncols)
         return OK;
     }
     if (nlines > 1 && ncols > 1)
-        PDC_mac_adjust_size(ncols * PDC_font_width, nlines * PDC_font_height, 0);
+        PDC_mac_adjust_cells(ncols, nlines, 0);
     return OK;
 }
 

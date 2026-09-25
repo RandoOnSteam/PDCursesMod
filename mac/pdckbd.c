@@ -8,8 +8,10 @@ int PDC_key_queue[PDC_KEY_QUEUE_SIZE];
 int PDC_key_queue_head = 0;
 int PDC_key_queue_tail = 0;
 
-static int last_mouse_button = 0;
+static int held_mouse_button = -1;
 static Point last_mouse_local;
+static long mouse_wait_until = 0;
+static unsigned long last_event_tick = 0;
 static int prev_special_key = -1;
 
 static const struct
@@ -172,6 +174,48 @@ static void local_mouse(const EventRecord *event, Point *local)
     GlobalToLocal(local);
 }
 
+static void announce_mouse_events(void)
+{
+    int announced;
+    int i;
+
+    mouse_wait_until = 0;
+    announced = 0;
+    for (i = PDC_key_queue_head; i != PDC_key_queue_tail; )
+    {
+        if (PDC_key_queue[i] == KEY_MOUSE)
+            announced++;
+        i++;
+        if (i >= PDC_KEY_QUEUE_SIZE)
+            i = 0;
+    }
+    while (announced < _mlist_count)
+    {
+        PDC_mac_add_key(KEY_MOUSE);
+        announced++;
+    }
+}
+
+static void check_mouse_wait(void)
+{
+    if (mouse_wait_until && PDC_millisecs() - mouse_wait_until >= 0)
+        announce_mouse_events();
+}
+
+static void mouse_cell(const Point *local, int *x, int *y)
+{
+    *x = local->h / PDC_font_width;
+    *y = local->v / PDC_font_height;
+    if (*x < 0)
+        *x = 0;
+    if (*y < 0)
+        *y = 0;
+    if (SP && *x >= SP->cols)
+        *x = SP->cols - 1;
+    if (SP && *y >= SP->lines)
+        *y = SP->lines - 1;
+}
+
 static void queue_mouse(int button, int event_type, const EventRecord *event)
 {
     Point local;
@@ -180,19 +224,12 @@ static void queue_mouse(int button, int event_type, const EventRecord *event)
 
     local_mouse(event, &local);
     last_mouse_local = local;
-    x = local.h / PDC_font_width;
-    y = local.v / PDC_font_height;
-    if (x < 0)
-        x = 0;
-    if (y < 0)
-        y = 0;
-    if (SP && x >= SP->cols)
-        x = SP->cols - 1;
-    if (SP && y >= SP->lines)
-        y = SP->lines - 1;
-    _add_raw_mouse_event(button, event_type, mouse_modifs(event), x, y);
-    if (_get_mouse_event(NULL))
-        PDC_mac_add_key(KEY_MOUSE);
+    mouse_cell(&local, &x, &y);
+    if (_add_raw_mouse_event(button, event_type, mouse_modifs(event), x, y)
+        && SP->mouse_wait > 0)
+        mouse_wait_until = PDC_millisecs() + SP->mouse_wait;
+    else
+        announce_mouse_events();
 }
 
 static int lookup_special(unsigned char keycode, unsigned long modifiers)
@@ -257,7 +294,7 @@ static int translate_key(const EventRecord *event)
         if (PDC_font_size > 48)
             PDC_font_size = 48;
         PDC_mac_apply_font();
-        PDC_mac_adjust_size(PDC_cols * PDC_font_width, PDC_rows * PDC_font_height, 1);
+        PDC_mac_adjust_cells(PDC_cols, PDC_rows, 1);
         return -1;
     }
     if ((event->modifiers & cmdKey) && charcode == '-')
@@ -269,7 +306,7 @@ static int translate_key(const EventRecord *event)
         if (PDC_font_size < 6)
             PDC_font_size = 6;
         PDC_mac_apply_font();
-        PDC_mac_adjust_size(PDC_cols * PDC_font_width, PDC_rows * PDC_font_height, 1);
+        PDC_mac_adjust_cells(PDC_cols, PDC_rows, 1);
         return -1;
     }
     key = lookup_special(keycode, modifiers);
@@ -325,6 +362,8 @@ static void handle_key(EventRecord *event)
     key = translate_key(event);
     if (key == 3 && SP && !SP->raw_inp)
         exit(0);
+    if (key > 0 && key == PDC_get_function_key(FUNCTION_KEY_ABORT))
+        exit(-1);
     if (key > 0)
     {
         if (prev_special_key == key)
@@ -340,13 +379,13 @@ static void handle_content_click(EventRecord *event, int pressed)
 
     if (pressed)
     {
-        button = mouse_button_from_event(event);
-        last_mouse_button = button;
-        queue_mouse(button, BUTTON_PRESSED, event);
+        held_mouse_button = mouse_button_from_event(event);
+        queue_mouse(held_mouse_button, BUTTON_PRESSED, event);
     }
-    else
+    else if (held_mouse_button >= 0)
     {
-        button = last_mouse_button;
+        button = held_mouse_button;
+        held_mouse_button = -1;
         queue_mouse(button, BUTTON_RELEASED, event);
     }
 }
@@ -354,6 +393,7 @@ static void handle_content_click(EventRecord *event, int pressed)
 static void handle_mouse_moved(EventRecord *event)
 {
     Point local;
+    int button;
     int x;
     int y;
 
@@ -369,10 +409,13 @@ static void handle_mouse_moved(EventRecord *event)
         return;
     }
     last_mouse_local = local;
-    x = local.h / PDC_font_width;
-    y = local.v / PDC_font_height;
-    _add_raw_mouse_event(last_mouse_button, BUTTON_MOVED, mouse_modifs(event), x, y);
-    PDC_mac_add_key(KEY_MOUSE);
+    mouse_cell(&local, &x, &y);
+    button = 0;
+    if (held_mouse_button >= 0)
+        button = held_mouse_button;
+    _add_raw_mouse_event(button, BUTTON_MOVED, mouse_modifs(event), x, y);
+    if (!mouse_wait_until)
+        announce_mouse_events();
     PDC_mac_reset_mouse_rgn();
 }
 
@@ -489,8 +532,16 @@ void PDC_set_keyboard_binary(bool on)
 
 bool PDC_check_key(void)
 {
+    unsigned long tick;
+
     PDC_check_for_blinking();
-    PDC_mac_process_events(0);
+    tick = TickCount();
+    if (tick != last_event_tick)
+    {
+        last_event_tick = tick;
+        PDC_mac_process_events(0);
+    }
+    check_mouse_wait();
     if (queue_has_key())
         return TRUE;
     return FALSE;
@@ -502,6 +553,7 @@ int PDC_get_key(void)
 
     if (!queue_has_key())
         PDC_mac_process_events(GetCaretTime());
+    check_mouse_wait();
     key = pop_key();
     return key;
 }
@@ -511,6 +563,8 @@ void PDC_flushinp(void)
     PDC_LOG(("PDC_flushinp() - called\n"));
     PDC_key_queue_head = 0;
     PDC_key_queue_tail = 0;
+    mouse_wait_until = 0;
+    held_mouse_button = -1;
     while (_get_mouse_event(&SP->mouse_status))
         ;
     FlushEvents(keyDownMask | keyUpMask | autoKeyMask | mDownMask | mUpMask, 0);
