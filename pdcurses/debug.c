@@ -56,7 +56,7 @@ debug
 
 #include <stdlib.h>
 #include <string.h>
-#if !defined(macintosh)
+#if !defined(macintosh) && !(defined(__MWERKS__) && (defined(__MC68K__) || defined(__POWERPC__)))
 	#include <sys/types.h>
 #endif
 #include <time.h>

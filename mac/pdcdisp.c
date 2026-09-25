@@ -561,6 +561,19 @@ static void draw_cursor_shape(Rect *cell, const RGBColor *fg)
     }
 }
 
+void PDC_mac_default_background(RGBColor *color)
+{
+    PACKED_RGB fgpacked;
+    PACKED_RGB bgpacked;
+
+    bgpacked = PACK_RGB(0, 0, 0);
+    if (SP && SP->pairs_allocated > 0)
+        PDC_get_rgb_values((chtype)0, &fgpacked, &bgpacked);
+    if (bgpacked == (PACKED_RGB)-1)
+        bgpacked = PACK_RGB(0, 0, 0);
+    packed_to_rgb(bgpacked, color);
+}
+
 void PDC_transform_line(int lineno, int x, int len, const chtype *srcp)
 {
     int i;

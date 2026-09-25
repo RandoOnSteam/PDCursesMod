@@ -8,20 +8,29 @@ void PDC_beep(void)
 
 void PDC_napms(int ms)
 {
-    long start;
-    long waitticks;
+    unsigned long start;
+    unsigned long waitticks;
+    unsigned long fiftieths;
+    unsigned long remainder;
 
     PDC_LOG(("PDC_napms() - called: ms=%d\n", ms));
     if (ms <= 0)
         return;
-    /* milliseconds->TickCount() ticks calculation (/ 16.6~), 
-        while adding just under a tick to round up */
-    waitticks = ((long)ms * 60L + 999L) / 1000L;
-    if (waitticks < 1)
-        waitticks = 1;
-    start = TickCount();
+    /* milliseconds->TickCount() ticks calculation
+        to prevent overflow and be reasonably performant */
+    fiftieths = (unsigned long)ms / 50UL;
+    remainder = ((unsigned long)ms 
+        - ((fiftieths << 5) + (fiftieths << 4) + (fiftieths << 1))) * 3UL;
+    waitticks = fiftieths * 3UL;
+    if (remainder > 100UL)
+        waitticks += 3UL;
+    else if (remainder > 50UL)
+        waitticks += 2UL;
+    else if (remainder)
+        waitticks += 1UL;
+    start = (unsigned long)TickCount();
     PDC_check_for_blinking();
-    while (TickCount() - start < waitticks)
+    while ((unsigned long)TickCount() - start < waitticks)
     { /* PDC_mac_process_events() calls WaitNextEvent() which will yield to
             other threads and avoid spinning the CPU */
         PDC_mac_process_events(1);

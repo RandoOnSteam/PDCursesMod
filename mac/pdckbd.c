@@ -2,7 +2,11 @@
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
-#include <mouse.c>
+#if defined(__MWERKS__)
+#include "::common:mouse.c"
+#else
+#include "../common/mouse.c"
+#endif
 
 int PDC_key_queue[PDC_KEY_QUEUE_SIZE];
 int PDC_key_queue_head = 0;

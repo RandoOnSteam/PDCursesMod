@@ -140,6 +140,25 @@ static void screen_work_rect(Rect *bounds)
     bounds->top = (short)(bounds->top + GetMBarHeight());
 }
 
+static void paint_margins(void)
+{
+    Rect bounds;
+    Rect strip;
+    RGBColor background;
+
+    PDC_mac_set_port();
+    PDC_mac_port_bounds(&bounds);
+    PDC_mac_default_background(&background);
+    RGBForeColor(&background);
+    strip = bounds;
+    strip.left = (short)(bounds.right - PDC_MAC_GROW_MARGIN);
+    PaintRect(&strip);
+    strip = bounds;
+    strip.top = (short)(bounds.bottom - PDC_MAC_GROW_MARGIN);
+    PaintRect(&strip);
+    DrawGrowIcon(PDC_window);
+}
+
 void PDC_mac_adjust_size(int pixelwidth, int pixelheight, int queue_resize)
 {
     int rows;
@@ -171,8 +190,8 @@ void PDC_mac_adjust_size(int pixelwidth, int pixelheight, int queue_resize)
     }
     PDC_mac_port_bounds(&limits);
     PDC_mac_invalidate(&limits);
-    PDC_mac_set_port();
-    DrawGrowIcon(PDC_window);
+    if (SP)
+        paint_margins();
 }
 
 void PDC_mac_adjust_cells(int cols, int rows, int queue_resize)
@@ -248,8 +267,10 @@ void PDC_mac_redraw(void)
             if (curscr->_y[y])
                 PDC_transform_line(y, 0, cols, curscr->_y[y]);
         }
+        paint_margins();
     }
-    DrawGrowIcon(PDC_window);
+    else
+        DrawGrowIcon(PDC_window);
     EndUpdate(PDC_window);
 }
 

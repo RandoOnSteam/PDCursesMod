@@ -10,16 +10,24 @@ CarbonLib on either 68k or PowerPC.
 Building
 --------
 
-- You can cross-compile with Retro68 using CMake. If you 
-  are running Macintosh in an emulator this is probably the 
-  most convenient way to compile PDCursesMod.
+- You can cross-compile with Retro68 using CMake. This is
+  the main way to do it as you get a modern compiler with
+  modern optimizations. Some Linux distros have a package 
+  for Retro68, but for those that don't there are a couple 
+  options:
+  
+  1) The main Retro68 repo at https://github.com/autc04/Retro68/
+  2) Matthewdeaves's fork at https://github.com/matthewdeaves/Retro68 which includes a more hands-free setup script
  
 - A CodeWarrior 8 file is included for native compilation 
   and debugging. The non-CMake options include:
 
-        pdcursescw8mac - Macintosh CodeWarrior 8 (non-Pro) project file 
+        pdcursescw8mac.sit - Macintosh CodeWarrior 8 (non-Pro) 68k project file
         pdcursescw6win.mcp - Windows CodeWarrior 6 Pro project file
-        
+    
+- Use Stuffit Expander to extract the native Macintosh CodeWarrior 8
+  project. It is compressed to preserve its resources.
+    
 - The CodeWarrior project files include only the library itself. 
   If you want compile a demo, test, or your own application, 
   either add it as a target to the project or make your own 

@@ -5,6 +5,7 @@
 # define TARGET_API_MAC_CARBON TARGET_CARBON
 #endif
 
+#define erase PDC_mac_qd_erase /* CW8 non-Pro has erase as an enum */
 #include <Quickdraw.h>
 #include <Fonts.h>
 #include <Windows.h>
@@ -22,6 +23,7 @@
 #include <Devices.h>
 #include <AppleEvents.h>
 #include <Resources.h>
+#undef erase
 
 #undef MOUSE_MOVED
 #include <curspriv.h>
@@ -34,6 +36,14 @@
 
 #ifndef zoomDocProc
 #define zoomDocProc 8
+#endif
+
+#if !defined(NewAEEventHandlerUPP) && defined(NewAEEventHandlerProc)
+#define NewAEEventHandlerUPP NewAEEventHandlerProc
+#endif
+
+#ifndef kFontIDSymbol
+#define kFontIDSymbol 23
 #endif
 
 #ifndef monaco
@@ -136,6 +146,7 @@ void PDC_mac_redraw(void);
 void PDC_mac_handle_menu(long menuresult);
 void PDC_mac_adjust_size(int pixelwidth, int pixelheight, int queue_resize);
 void PDC_mac_adjust_cells(int cols, int rows, int queue_resize);
+void PDC_mac_default_background(RGBColor *color);
 unsigned short PDC_macroman_to_unicode(unsigned char ch);
 unsigned char PDC_unicode_to_macroman(unsigned long code);
 
