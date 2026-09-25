@@ -54,7 +54,9 @@ util
    wcstombs().  If the library is built for "forced" UTF8 encoding,
    the PDC_* functions do UTF8 encoding and decoding.  If it is built
    without forced encoding,  then the standard library functions are
-   used instead.
+   used instead.  Note that (unlike the standard library wcstombs()
+   function) PDC_wcstombs() will null-terminate the destination string
+   if it runs out of space or if src contains unencodable values.
 
 ### Return Value
 
@@ -327,6 +329,7 @@ int setcchar(cchar_t *wcval, const wchar_t *wch, const attr_t attrs,
 {
     int32_t ochar[CCHARW_MAX], rval;
     const int integer_color_pair = (opts ? *(int *)opts : (int)color_pair);
+    int n;
 #ifdef USING_COMBINING_CHARACTER_SCHEME
     int i;
 #endif
@@ -335,13 +338,14 @@ int setcchar(cchar_t *wcval, const wchar_t *wch, const attr_t attrs,
     assert( wch);
     if (!wcval || !wch)
         return ERR;
-    if( _wchar_to_int32_array( ochar, CCHARW_MAX, wch) < 0)
+    n = _wchar_to_int32_array( ochar, CCHARW_MAX, wch);
+    if( n < 0)
         return ERR;
     rval = ochar[0];
-         /* If len_out > 1,  we have combining characters.  See */
+         /* If n > 1,  we have combining characters.  See */
          /* 'addch.c' for a discussion of how we handle those.  */
 #ifdef USING_COMBINING_CHARACTER_SCHEME
-    for( i = 1; ochar[i]; i++)
+    for( i = 1; i < n; i++)
         rval = COMBINED_CHAR_START + PDC_find_combined_char_idx( rval, ochar[i]);
 #endif
     *wcval = rval | attrs | COLOR_PAIR(integer_color_pair);
@@ -473,30 +477,35 @@ size_t PDC_mbstowcs(wchar_t *dest, const char *src, size_t n)
 size_t PDC_wcstombs(char *dest, const wchar_t *src, size_t n)
 {
 # ifdef PDC_FORCE_UTF8
-    size_t i = 0;
+    size_t i = 0, count = 1;
 
     assert( src);
     assert( dest);
     if (!src || !dest)
         return 0;
 
-    while( i + 4 < n && *src)
-       i += PDC_wc_to_utf8( dest + i, *src++);
-    while( i < n && *src)
+    while( count && i + 4 < n && *src)
+       i += (count = PDC_wc_to_utf8( dest + i, *src++));
+    while( count && i < n && *src)
     {
        char tbuff[4];
-       size_t count = (size_t)PDC_wc_to_utf8( tbuff, *src++);
 
-       assert( count <= n - i);  /* partial UTF-8 decoding indicates error */
+       count = (size_t)PDC_wc_to_utf8( tbuff, *src++);
        if( count > n - i)
            count = n - i;
        memcpy( dest + i, tbuff, count);
        i += count;
     }
+    if( !count)                 /* invalid UTF-8 sequence encountered */
+        i = (size_t)-1;
 # else
     size_t i = wcstombs(dest, src, n);
 # endif
-    dest[i] = '\0';
+    assert( -1 != (int)i && i < n);
+    if( (int)i < 0 || i >= n)        /* invalid sequence or insufficient space */
+        *dest = '\0';
+    else
+        dest[i] = '\0';
     return i;
 }
 #endif
