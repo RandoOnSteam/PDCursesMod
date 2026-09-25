@@ -485,8 +485,8 @@ long PDC_millisecs( void)
 #elif defined(macintosh)
 #include <OSUtils.h>
 long PDC_millisecs( void)
-{
-	return (((long)TickCount()) * 1000) / 60;
+{ /* TickCount() is in 60th of a second, or 16.6~ milliseconds per tick */
+	return (((long)TickCount()) * 1000) / 60; /* ~= TickCount() * 16.6~ */
 }
 
 #else    /* neither gettimeofday() or clock_gettime() available */

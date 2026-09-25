@@ -14,13 +14,16 @@ void PDC_napms(int ms)
     PDC_LOG(("PDC_napms() - called: ms=%d\n", ms));
     if (ms <= 0)
         return;
+    /* milliseconds->TickCount() ticks calculation (/ 16.6~), 
+        while adding just under a tick to round up */
     waitticks = ((long)ms * 60L + 999L) / 1000L;
     if (waitticks < 1)
         waitticks = 1;
     start = TickCount();
     PDC_check_for_blinking();
     while (TickCount() - start < waitticks)
-    {
+    { /* PDC_mac_process_events() calls WaitNextEvent() which will yield to
+            other threads and avoid spinning the CPU */
         PDC_mac_process_events(1);
         PDC_check_for_blinking();
     }
