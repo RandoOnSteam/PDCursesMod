@@ -23,7 +23,6 @@ Building
   and debugging. The non-CMake options include:
 
         pdcursescw8mac.sit - Macintosh CodeWarrior 8 (non-Pro) 68k project file
-        pdcursescw6win.mcp - Windows CodeWarrior 6 Pro project file
     
 - Use Stuffit Expander to extract the native Macintosh CodeWarrior 8
   project. It is compressed to preserve its resources.
